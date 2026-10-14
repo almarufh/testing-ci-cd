@@ -1,0 +1,56 @@
+name: Create Backend EventHub API v1.0.0
+on:
+  push:
+    tags:
+      - v*
+    branches:
+      - feat/workflow
+jobs:
+  build-binary:
+    name: Build App
+    runs-on: ubuntu-22.04
+    outputs:
+      output1: ${{ steps.binary.outputs.artifact-id }}
+    steps:
+      - name: Checkout source code from repository
+        uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Build golang app
+        run: CGO_ENABLED=0 go build -o backend ./cmd/main.go
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v7
+        id: binary
+        with:
+          name: backend-ewalet
+          path: backend
+
+  build-image:
+    name: Build image
+    needs: build-binary
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download binary
+        uses: actions/download-artifact@v8
+        with:
+          name: backend-ewalet
+          path: image
+
+      - name: Create docker image
+        run: |
+          cat << 'KEREN' > Dockerfile
+          FROM alpine:3.24.2
+          WORKDIR /server
+          COPY ./image/backend /server/backend
+          RUN chmod +x /server/backend
+          CMD [ "/server/backend" ]
+          KEREN
+      - name: Build image
+        run: docker build -t ghcr.io/${{github.repository}}:latest .
+      - name: Login to ghcr.io
+        run: echo -n ${{secrets.GITHUB_TOKEN}} | docker login ghcr.io --username ${{github.actor}} --password-stdin
+      - name: Push image to ghcr
+        run: docker push ghcr.io/${{github.repository}}:latest
